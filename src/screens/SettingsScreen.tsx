@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -13,8 +13,10 @@ import {
   setNotificationType,
 } from '../store/settingsSlice';
 import { withRedux } from '../store/withRedux';
+import {checkForOtaUpdate} from '../services/otaUpdateService';
 
 export function SettingsScreenComponent() {
+  const [checkingForUpdate, setCheckingForUpdate] = useState(false);
   const dispatch = useAppDispatch();
   const currentNotificationType = useAppSelector(
     state => state.settings?.notificationType ?? 'alarm',
@@ -124,6 +126,47 @@ export function SettingsScreenComponent() {
           </Pressable>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>APP UPDATE</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Check for app updates"
+            accessibilityState={{disabled: checkingForUpdate}}
+            testID="check-for-updates-row"
+            disabled={checkingForUpdate}
+            onPress={async () => {
+              setCheckingForUpdate(true);
+              try {
+                await checkForOtaUpdate();
+              } catch {
+                // The update service already presented the error.
+              } finally {
+                setCheckingForUpdate(false);
+              }
+            }}
+            style={({pressed}) => [
+              styles.securityCard,
+              pressed && styles.cardPressed,
+              checkingForUpdate && styles.cardDisabled,
+            ]}
+          >
+            <View style={styles.securityLeft}>
+              <View style={[styles.iconContainer, styles.updateIconContainer]}>
+                <Text style={styles.iconText}>↻</Text>
+              </View>
+              <View style={styles.securityTextContainer}>
+                <Text style={styles.securityTitle}>
+                  {checkingForUpdate ? 'Checking…' : 'Check for updates'}
+                </Text>
+                <Text style={styles.securitySubtitle}>
+                  Download feature updates without reinstalling
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </View>
+
         {/* Security Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>SECURITY</Text>
@@ -210,6 +253,9 @@ const styles = StyleSheet.create({
   cardPressed: {
     opacity: 0.85,
   },
+  cardDisabled: {
+    opacity: 0.6,
+  },
   optionHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -236,6 +282,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f3ff',
     borderWidth: 1,
     borderColor: '#ede9fe',
+  },
+  updateIconContainer: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#d1fae5',
   },
   iconText: {
     fontSize: 20,
@@ -346,4 +397,3 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
-

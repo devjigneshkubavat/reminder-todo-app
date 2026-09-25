@@ -219,7 +219,7 @@ describe('notificationService', () => {
         id: 'task-simple-sched',
         title: 'Water Plants',
         dueDate: new Date(futureTime).toISOString(),
-        priority: 'low',
+        priority: 'normal',
         occurOnce: true,
         createdAt: new Date().toISOString(),
       };

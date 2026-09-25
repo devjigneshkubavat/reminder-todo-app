@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "runtimeVersion": "1.0",
+  "minimumVersionCode": 1,
+  "downloadAndroidUrl": "https://raw.githubusercontent.com/devjigneshkubavat/reminder-todo-app/main/ota/releases/android-v1.zip",
+  "releaseNotes": "Initial OTA pipeline test",
+  "mandatory": false
+}

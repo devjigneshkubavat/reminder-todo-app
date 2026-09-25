@@ -12,6 +12,7 @@ import {
   syncAllTaskAlarms,
 } from '../services/notificationService';
 import {TabButton} from './TabButton';
+import {checkForOtaUpdate} from '../services/otaUpdateService';
 
 Navigation.setDefaultOptions(screenOptions);
 
@@ -61,6 +62,9 @@ Navigation.events().registerAppLaunchedListener(() => {
       );
     });
   startPasscodeFlow();
+  checkForOtaUpdate({silent: true}).catch(error => {
+    console.warn('OTA update check failed', error);
+  });
 });
 
 notifee.onForegroundEvent(({type, detail}) => {

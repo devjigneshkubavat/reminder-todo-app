@@ -90,6 +90,21 @@ jest.mock('react-native-notify-kit', () => ({
   },
 }));
 
+jest.mock('react-native-ota-hot-update', () => ({
+  __esModule: true,
+  default: {
+    downloadBundleUri: jest.fn(async () => {}),
+    getCurrentVersion: jest.fn(async () => 0),
+    resetApp: jest.fn(async () => {}),
+    rollbackToPreviousBundle: jest.fn(async () => true),
+  },
+}));
+
+jest.mock('react-native-blob-util', () => ({
+  __esModule: true,
+  default: {},
+}));
+
 jest.mock('react-native-navigation', () => ({
   Navigation: {
     setRoot: jest.fn(async () => {}),
@@ -109,4 +124,3 @@ jest.mock('react-native-navigation', () => ({
     fullScreen: 'fullScreen',
   },
 }));
-

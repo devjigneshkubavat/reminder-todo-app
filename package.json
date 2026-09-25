@@ -8,7 +8,8 @@
     "lint": "eslint .",
     "start": "react-native start --port 8082",
     "test": "jest",
-    "android:release": "react-native run-android --mode release --no-packager"
+    "android:release": "react-native run-android --mode release --no-packager",
+    "ota:build:android": "bash scripts/build-ota-android.sh"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^3.1.1",
@@ -16,9 +17,11 @@
     "@reduxjs/toolkit": "^2.12.0",
     "react": "19.2.3",
     "react-native": "0.87.1",
+    "react-native-blob-util": "^0.25.1",
     "react-native-keychain": "^10.0.0",
     "react-native-navigation": "patch:react-native-navigation@patch%3Areact-native-navigation@npm%253A8.9.0%23~/.yarn/patches/react-native-navigation-npm-8.9.0-8d96eb315e.patch%3A%3Aversion=8.9.0&hash=b5ce94#~/.yarn/patches/react-native-navigation-patch-40cdbebd95.patch",
     "react-native-notify-kit": "^10.7.2",
+    "react-native-ota-hot-update": "^2.4.71",
     "react-native-safe-area-context": "^5.5.2",
     "react-redux": "^9.3.0",
     "redux-persist": "^6.0.0"
