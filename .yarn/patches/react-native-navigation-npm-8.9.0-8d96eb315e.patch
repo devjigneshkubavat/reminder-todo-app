@@ -1,0 +1,330 @@
+diff --git a/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRow.kt b/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRow.kt
+index 8764ad4a1a5aeba1b1938a66389ce11c37886222..478af582152c989cb97e70c22b7448d93bce8237 100644
+--- a/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRow.kt
++++ b/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRow.kt
+@@ -3,6 +3,7 @@ package com.reactnativenavigation.customrow
+ import android.annotation.SuppressLint
+ import android.content.Context
+ import android.graphics.Color
++import android.graphics.drawable.GradientDrawable
+ import android.graphics.Outline
+ import android.graphics.RenderEffect
+ import android.graphics.Shader
+@@ -38,6 +39,7 @@ class BottomTabsCustomRow(
+     private val cells = mutableListOf<Cell>()
+     private var currentOptions: BottomTabsCustomRowOptions = BottomTabsCustomRowConfigStore.get()
+     private var selectedIndex: Int = bottomTabs.currentItem
++    private var floatingPressed = false
+     private var safeBottomInsetPx: Int = 0
+ 
+     /**
+@@ -49,9 +51,17 @@ class BottomTabsCustomRow(
+      * the cells inside it ensures cells render *above* the chrome regardless
+      * of elevation.
+      */
++    private val topShadowView = View(context).apply {
++        background = GradientDrawable(
++            GradientDrawable.Orientation.TOP_BOTTOM,
++            intArrayOf(Color.TRANSPARENT, Color.argb(0x28, 0, 0, 0))
++        )
++    }
++
+     private val backgroundView: FrameLayout = FrameLayout(context).apply {
+-        clipToOutline = true
+-        clipChildren = true
++        clipToOutline = false
++        clipChildren = false
++        clipToPadding = false
+         outlineProvider = object : ViewOutlineProvider() {
+             override fun getOutline(view: View, outline: Outline) {
+                 val r = effectiveCornerRadiusPx()
+@@ -68,12 +78,47 @@ class BottomTabsCustomRow(
+         setWillNotDraw(true)
+         clipChildren = false
+         clipToPadding = false
++        addView(topShadowView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+         addView(backgroundView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+         BottomTabsCustomRowConfigStore.addListener(configListener)
+         applyOptions(currentOptions)
+         rebuildCells()
+     }
+ 
++    private fun isFloatingButtonHit(x: Float, y: Float): Boolean {
++        val centerCell = cells.getOrNull(1) ?: return false
++        val centerX = backgroundView.left + centerCell.left + centerCell.width / 2f
++        val centerY = backgroundView.top + centerCell.top + centerCell.translationY + centerCell.height / 2f
++        val radius = dp(30f)
++        val dx = x - centerX
++        val dy = y - centerY
++        return dx * dx + dy * dy <= radius * radius
++    }
++
++    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
++        if (floatingPressed) {
++            when (event.actionMasked) {
++                MotionEvent.ACTION_UP -> {
++                    floatingPressed = false
++                    if (isFloatingButtonHit(event.x, event.y)) cells.getOrNull(1)?.performClick()
++                    return true
++                }
++                MotionEvent.ACTION_CANCEL -> {
++                    floatingPressed = false
++                    return true
++                }
++                else -> return true
++            }
++        }
++        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
++            event.y < backgroundView.top && isFloatingButtonHit(event.x, event.y)
++        ) {
++            floatingPressed = true
++            return true
++        }
++        return super.dispatchTouchEvent(event)
++    }
++
+     override fun onDetachedFromWindow() {
+         super.onDetachedFromWindow()
+         BottomTabsCustomRowConfigStore.removeListener(configListener)
+@@ -93,7 +138,7 @@ class BottomTabsCustomRow(
+             val cell = Cell(context, i, itemView).also {
+                 it.setOnClickListener { _ ->
+                     bottomTabs.setCurrentItem(i, true)
+-                    setSelectedIndex(i)
++                    if (i != 1) setSelectedIndex(i)
+                 }
+             }
+             backgroundView.addView(
+@@ -142,10 +187,10 @@ class BottomTabsCustomRow(
+         // low-elevation shadow tinted at low alpha. Hard `elevation = 8` (the
+         // Material default) looks much heavier than the iOS reference, so
+         // we stay subtle: ~3dp elevation, ~30% / 12% shadow alpha.
+-        backgroundView.elevation = dp(3f)
++        backgroundView.elevation = dp(8f)
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+-            backgroundView.outlineSpotShadowColor = Color.argb(0x4C, 0, 0, 0)
+-            backgroundView.outlineAmbientShadowColor = Color.argb(0x1E, 0, 0, 0)
++            backgroundView.outlineSpotShadowColor = Color.argb(0x66, 0, 0, 0)
++            backgroundView.outlineAmbientShadowColor = Color.argb(0x38, 0, 0, 0)
+         }
+         backgroundView.invalidateOutline()
+         requestLayout()
+@@ -215,9 +260,14 @@ class BottomTabsCustomRow(
+         val bgSpec = MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY)
+         val bgHeightSpec = MeasureSpec.makeMeasureSpec(contentBottom, MeasureSpec.EXACTLY)
+         backgroundView.measure(bgSpec, bgHeightSpec)
+-        backgroundView.layout(0, 0, w, contentBottom)
++        val topInset = dp(40f).toInt()
++        val shadowHeight = dp(12f).toInt()
++        val shadowSpec = MeasureSpec.makeMeasureSpec(shadowHeight, MeasureSpec.EXACTLY)
++        topShadowView.measure(bgSpec, shadowSpec)
++        topShadowView.layout(0, topInset - shadowHeight, w, topInset)
++        backgroundView.layout(0, topInset, w, contentBottom)
+         backgroundView.invalidateOutline()
+-        layoutCells(w, contentBottom)
++        layoutCells(w, contentBottom - topInset)
+     }
+ 
+     private fun layoutCells(parentWidth: Int, parentHeight: Int) {
+@@ -228,11 +278,13 @@ class BottomTabsCustomRow(
+             val l = (i * per).toInt()
+             val r = ((i + 1) * per).toInt()
+             val widthSpec = MeasureSpec.makeMeasureSpec(r - l, MeasureSpec.EXACTLY)
+-            val heightSpec = MeasureSpec.makeMeasureSpec(parentHeight, MeasureSpec.EXACTLY)
++            val cellHeight = parentHeight + if (i == 1) dp(30f).toInt() else 0
++            val heightSpec = MeasureSpec.makeMeasureSpec(cellHeight, MeasureSpec.EXACTLY)
+             cell.measure(widthSpec, heightSpec)
+             // Cells are children of `backgroundView`, laid out in its local
+             // coordinate space (which is already 0..contentBottom).
+-            cell.layout(l, 0, r, parentHeight)
++            cell.layout(l, 0, r, cellHeight)
++            cell.translationY = if (i == 1) -dp(40f) else 0f
+         }
+     }
+ 
+@@ -248,6 +300,8 @@ class BottomTabsCustomRow(
+         init {
+             isClickable = true
+             isFocusable = true
++            clipChildren = false
++            clipToPadding = false
+             // Host the React item view inside this cell so it inherits taps
+             // we don't consume.
+             addView(itemView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+diff --git a/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRowLayout.kt b/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRowLayout.kt
+index a0c1e2bcec5b6664d34b771f50b7ff7d7fffed2c..2a6ecd789d932101e6eebc8be901a63faf76469a 100644
+--- a/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRowLayout.kt
++++ b/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRowLayout.kt
+@@ -61,7 +61,7 @@ internal object BottomTabsCustomRowLayout {
+         val rowSafeBottom = 0
+ 
+         val contentHeight = row.effectiveContentHeightPx(nativeHeight)
+-        val totalHeight = contentHeight + bottomMargin
++        val totalHeight = contentHeight + bottomMargin + dpToPx(activity, 40f)
+ 
+         val left = tabLeftInHost + horizontalMargin
+         val width = (tabRightInHost - horizontalMargin) - left
+diff --git a/android/src/main/java/com/reactnativenavigation/react/NavigationTurboModule.kt b/android/src/main/java/com/reactnativenavigation/react/NavigationTurboModule.kt
+index de36aa609a5c795ac2687cba1cec49b25db3a09e..4a0a631d725a7673f66e5a08d7565809cc29c8eb 100644
+--- a/android/src/main/java/com/reactnativenavigation/react/NavigationTurboModule.kt
++++ b/android/src/main/java/com/reactnativenavigation/react/NavigationTurboModule.kt
+@@ -65,7 +65,7 @@ class NavigationTurboModule(
+                 UiUtils.getBottomTabsHeight(reactApplicationContext).toFloat()
+             ).toDouble()
+         constants[Constants.STATUS_BAR_HEIGHT_KEY] =
+-            UiUtils.pxToDp(reactApplicationContext, getStatusBarHeight(currentActivity).toFloat())
++            UiUtils.pxToDp(reactApplicationContext, getStatusBarHeight(getCurrentActivity()).toFloat())
+                 .toDouble()
+         constants[Constants.TOP_BAR_HEIGHT_KEY] = UiUtils.pxToDp(
+             reactApplicationContext,
+@@ -84,7 +84,7 @@ class NavigationTurboModule(
+         handle {
+             Log.d("NavigationTurboModule", "setRoot handle ${Thread.currentThread()}")
+             val viewController = layoutFactory.create(layoutTree)
+-            val activity = currentActivity
++            val activity = getCurrentActivity()
+             if (activity == null) {
+                 promise.reject("ACTIVITY_NULL", "Activity is null")
+                 return@handle
+@@ -299,7 +299,7 @@ class NavigationTurboModule(
+         if (activity == null) {
+             Log.e("NavigationTurboModule", "current activity is null!")
+         }
+-        return currentActivity as NavigationActivity?
++        return getCurrentActivity() as NavigationActivity?
+     }
+ 
+     companion object {
+diff --git a/android/src/main/java/com/reactnativenavigation/react/modal/ModalViewManager.kt b/android/src/main/java/com/reactnativenavigation/react/modal/ModalViewManager.kt
+index 2ab4afcd71e1a175bdc9898fa75282b032d34ba8..9e923dfdaa5b9abe54e70f2798fa8cfafdae4829 100644
+--- a/android/src/main/java/com/reactnativenavigation/react/modal/ModalViewManager.kt
++++ b/android/src/main/java/com/reactnativenavigation/react/modal/ModalViewManager.kt
+@@ -141,7 +141,7 @@ private fun getModalHostSize(activity: Activity): Point {
+ private class ModalHostShadowNode : LayoutShadowNode() {
+     override fun addChildAt(child: ReactShadowNodeImpl, i: Int) {
+         super.addChildAt(child, i)
+-        themedContext?.currentActivity?.let {
++        getThemedContext()?.currentActivity?.let {
+             val modalSize = getModalHostSize(it)
+             child.setStyleWidth(modalSize.x.toFloat())
+             child.setStyleHeight(modalSize.y.toFloat())
+diff --git a/android/src/main/java/com/reactnativenavigation/utils/Context.kt b/android/src/main/java/com/reactnativenavigation/utils/Context.kt
+index adee027a423dff39324eb74f5eff2b79a0158a7a..77cd74d24d1afb731262fbcc473b70cb7c9965ab 100644
+--- a/android/src/main/java/com/reactnativenavigation/utils/Context.kt
++++ b/android/src/main/java/com/reactnativenavigation/utils/Context.kt
+@@ -7,7 +7,7 @@ import com.facebook.react.ReactApplication
+ import com.reactnativenavigation.NavigationApplication
+ 
+ fun Context.isDebug(): Boolean {
+-    return (applicationContext as ReactApplication).reactNativeHost.useDeveloperSupport
++    return (applicationContext as ReactApplication).reactNativeHost.getUseDeveloperSupport()
+ }
+ fun isDarkMode() = NavigationApplication.instance.isDarkMode()
+ fun Context.isDarkMode(): Boolean = when (AppCompatDelegate.getDefaultNightMode()) {
+diff --git a/android/src/main/java/com/reactnativenavigation/views/element/TransitionAnimatorCreator.kt b/android/src/main/java/com/reactnativenavigation/views/element/TransitionAnimatorCreator.kt
+index f8fb69419fb68c5048c6695e7348b61c6079bf88..69be2fe7dfedb634598f0cb6e0253799452d2b6b 100644
+--- a/android/src/main/java/com/reactnativenavigation/views/element/TransitionAnimatorCreator.kt
++++ b/android/src/main/java/com/reactnativenavigation/views/element/TransitionAnimatorCreator.kt
+@@ -152,8 +152,7 @@ open class TransitionAnimatorCreator @JvmOverloads constructor(private val trans
+         parent.addView(element, index, lp)
+     }
+ 
+-    private fun getZIndex(view: View) = ViewGroupManager.getViewZIndex(view)
+-            ?: ViewTags.get(view, R.id.original_z_index)
++    private fun getZIndex(view: View) = ViewTags.get(view, R.id.original_z_index)
+             ?: 0
+ 
+     private fun addToOverlay(vc: ViewController<*>, element: View, lp: FrameLayout.LayoutParams) {
+diff --git a/android/src/main/java/com/reactnativenavigation/views/element/animators/ReactImageMatrixAnimator.kt b/android/src/main/java/com/reactnativenavigation/views/element/animators/ReactImageMatrixAnimator.kt
+index 1d8f81ce235f2029bada81b3e240db8be144ae13..ede390ae04c5f121a798297c0c7dd74bab09d512 100644
+--- a/android/src/main/java/com/reactnativenavigation/views/element/animators/ReactImageMatrixAnimator.kt
++++ b/android/src/main/java/com/reactnativenavigation/views/element/animators/ReactImageMatrixAnimator.kt
+@@ -27,14 +27,14 @@ class ReactImageMatrixAnimator(from: View, to: View) : PropertyAnimatorCreator<R
+             val parentScalyY = (from.parent as View).scaleY
+ 
+             val fromBounds = calculateBounds(from, parentScaleX, parentScalyY)
+-            hierarchy.actualImageScaleType = InterpolatingScaleType(
++            hierarchy.setActualImageScaleType(InterpolatingScaleType(
+                     getScaleType(from),
+                     getScaleType(to),
+                     fromBounds,
+                     calculateBounds(to),
+                     PointF(from.width * parentScaleX / 2f, from.height * parentScalyY / 2f),
+                     PointF(to.width / 2f, to.height / 2f)
+-            )
++            ))
+ 
+             to.layoutParams.width = max(from.width, to.width)
+             to.layoutParams.height = max(from.height, to.height)
+diff --git a/ios/RNNBottomTabsCustomRow.mm b/ios/RNNBottomTabsCustomRow.mm
+index f1011fc6c345df3ddd3079197c96416ee3035ff0..538bcb4c22d363d2fe1b0294fffb5ffbb942dec7 100644
+--- a/ios/RNNBottomTabsCustomRow.mm
++++ b/ios/RNNBottomTabsCustomRow.mm
+@@ -47,7 +47,7 @@ - (instancetype)initWithFrame:(CGRect)frame {
+         // Solid background layer (only made visible if user sets backgroundColor).
+         _backgroundColorView = [[UIView alloc] init];
+         _backgroundColorView.hidden = YES;
+-        _backgroundColorView.clipsToBounds = YES;
++        _backgroundColorView.clipsToBounds = NO;
+         if (@available(iOS 13.0, *)) {
+             _backgroundColorView.layer.cornerCurve = kCACornerCurveContinuous;
+         }
+@@ -158,7 +158,7 @@ - (CGFloat)desiredRowHeightForNativeTabBarHeight:(CGFloat)nativeTabBarHeight
+         contentHeight = [self.options.height.get doubleValue];
+     }
+   // Safe area is applied by the controller when positioning the row frame.
+-    return contentHeight + [self effectiveBottomMargin];
++    return contentHeight + 40.0 + [self effectiveBottomMargin];
+ }
+ 
+ - (void)setItemViews:(NSArray<RNNCustomTabBarItemView *> *)itemViews {
+@@ -194,6 +194,19 @@ - (void)handleCellTap:(RNNBottomTabsCustomRowCell *)cell {
+     }
+ }
+ 
++- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
++    if (self.cells.count > 1 && point.y < CGRectGetMinY(self.backgroundColorView.frame)) {
++        RNNBottomTabsCustomRowCell *cell = self.cells[1];
++        CGPoint localPoint = [self convertPoint:point toView:cell];
++        CGFloat dx = localPoint.x - CGRectGetMidX(cell.bounds);
++        CGFloat dy = localPoint.y - CGRectGetMidY(cell.bounds);
++        if (dx * dx + dy * dy <= 30.0 * 30.0) {
++            return cell;
++        }
++    }
++    return [super hitTest:point withEvent:event];
++}
++
+ - (void)layoutSubviews {
+     [super layoutSubviews];
+ 
+@@ -202,7 +215,7 @@ - (void)layoutSubviews {
+     // again here or the chrome shrinks by ~home-indicator height.
+     CGFloat bottomInset = [self effectiveBottomMargin];
+     CGRect content =
+-        UIEdgeInsetsInsetRect(self.bounds, UIEdgeInsetsMake(0, 0, bottomInset, 0));
++        UIEdgeInsetsInsetRect(self.bounds, UIEdgeInsetsMake(40.0, 0, bottomInset, 0));
+ 
+     CGFloat horizontalMargin = [self effectiveHorizontalMargin];
+     if (horizontalMargin > 0) {
+@@ -215,6 +228,10 @@ - (void)layoutSubviews {
+ 
+     self.backgroundEffectView.frame = content;
+     self.backgroundColorView.frame = content;
++    self.backgroundColorView.layer.shadowColor = UIColor.blackColor.CGColor;
++    self.backgroundColorView.layer.shadowOpacity = 0.18;
++    self.backgroundColorView.layer.shadowRadius = 10.0;
++    self.backgroundColorView.layer.shadowOffset = CGSizeMake(0, -3);
+ 
+     if (self.cells.count == 0) {
+         return;
+@@ -240,7 +257,8 @@ - (void)layoutSubviews {
+     for (NSUInteger i = 0; i < self.cells.count; i++) {
+         CGFloat x = floor((CGFloat)i * width);
+         CGFloat nextX = floor((CGFloat)(i + 1) * width);
+-        self.cells[i].frame = CGRectMake(x, 0, nextX - x, totalHeight);
++        self.cells[i].frame = CGRectMake(x, 0, nextX - x, totalHeight + (i == 1 ? 30.0 : 0.0));
++        self.cells[i].transform = i == 1 ? CGAffineTransformMakeTranslation(0, -40.0) : CGAffineTransformIdentity;
+     }
+ }
+ 

@@ -1,0 +1,129 @@
+diff --git a/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRowAttacher.kt b/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRowAttacher.kt
+--- a/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRowAttacher.kt
++++ b/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRowAttacher.kt
+@@ -105,11 +105,13 @@
+         val overlayHost = scanRoot.findViewById<View>(android.R.id.content) as? ViewGroup
+             ?: scanRoot
+ 
++        val activeRows = mutableSetOf<BottomTabsCustomRow>()
+         forEachBottomTabs(scanRoot) { bottomTabs ->
+             if (!bottomTabs.hasCustomItemViews()) return@forEachBottomTabs
+ 
+             val existing = bottomTabs.getTag(TAG_ATTACHED_ROW_ID) as? BottomTabsCustomRow
+             if (existing != null) {
++                activeRows.add(existing)
+                 ensureRowHostedOn(existing, overlayHost)
+                 positionRow(existing, bottomTabs, overlayHost, activity)
+                 return@forEachBottomTabs
+@@ -117,6 +119,7 @@
+ 
+             bottomTabs.setExternalCustomItemViewHost(true)
+             val row = BottomTabsCustomRow(overlayHost.context, bottomTabs)
++            activeRows.add(row)
+             overlayHost.addView(
+                 row,
+                 FrameLayout.LayoutParams(
+@@ -128,6 +131,15 @@
+             bottomTabs.alpha = 0f
+             bottomTabs.elevation = 0f
+             positionRow(row, bottomTabs, overlayHost, activity)
++        }
++
++        // The row is hosted outside the BottomTabs tree. Remove it when a
++        // setRoot call replaces the tabs with a standalone screen.
++        for (i in overlayHost.childCount - 1 downTo 0) {
++            val child = overlayHost.getChildAt(i)
++            if (child is BottomTabsCustomRow && child !in activeRows) {
++                overlayHost.removeViewAt(i)
++            }
+         }
+     }
+ 
+@@ -165,7 +177,15 @@
+             placement.height,
+             placement.rowSafeBottomInsetPx,
+         )
+-        if (row.getTag(TAG_LAST_PLACEMENT) == next) {
++        // Modal/keyboard layout passes can resize the overlay without changing
++        // its desired placement. Only skip when the actual bounds still match.
++        val currentParams = row.layoutParams as? FrameLayout.LayoutParams
++        if (row.getTag(TAG_LAST_PLACEMENT) == next &&
++            currentParams?.width == placement.width &&
++            currentParams.height == placement.height &&
++            row.left == placement.left && row.top == placement.top &&
++            row.width == placement.width && row.height == placement.height
++        ) {
+             return
+         }
+         row.setTag(TAG_LAST_PLACEMENT, next)
+diff --git a/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRow.kt b/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRow.kt
+--- a/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRow.kt
++++ b/android/src/main/java/com/reactnativenavigation/customrow/BottomTabsCustomRow.kt
+@@ -86,7 +86,7 @@
+     }
+ 
+     private fun isFloatingButtonHit(x: Float, y: Float): Boolean {
+-        val centerCell = cells.getOrNull(1) ?: return false
++        val centerCell = cells.getOrNull(2) ?: return false
+         val centerX = backgroundView.left + centerCell.left + centerCell.width / 2f
+         val centerY = backgroundView.top + centerCell.top + centerCell.translationY + centerCell.height / 2f
+         val radius = dp(30f)
+@@ -100,7 +100,7 @@
+             when (event.actionMasked) {
+                 MotionEvent.ACTION_UP -> {
+                     floatingPressed = false
+-                    if (isFloatingButtonHit(event.x, event.y)) cells.getOrNull(1)?.performClick()
++                    if (isFloatingButtonHit(event.x, event.y)) cells.getOrNull(2)?.performClick()
+                     return true
+                 }
+                 MotionEvent.ACTION_CANCEL -> {
+@@ -138,7 +138,7 @@
+             val cell = Cell(context, i, itemView).also {
+                 it.setOnClickListener { _ ->
+                     bottomTabs.setCurrentItem(i, true)
+-                    if (i != 1) setSelectedIndex(i)
++                    if (i != 2) setSelectedIndex(i)
+                 }
+             }
+             backgroundView.addView(
+@@ -278,13 +278,13 @@
+             val l = (i * per).toInt()
+             val r = ((i + 1) * per).toInt()
+             val widthSpec = MeasureSpec.makeMeasureSpec(r - l, MeasureSpec.EXACTLY)
+-            val cellHeight = parentHeight + if (i == 1) dp(30f).toInt() else 0
++            val cellHeight = parentHeight + if (i == 2) dp(30f).toInt() else 0
+             val heightSpec = MeasureSpec.makeMeasureSpec(cellHeight, MeasureSpec.EXACTLY)
+             cell.measure(widthSpec, heightSpec)
+             // Cells are children of `backgroundView`, laid out in its local
+             // coordinate space (which is already 0..contentBottom).
+             cell.layout(l, 0, r, cellHeight)
+-            cell.translationY = if (i == 1) -dp(40f) else 0f
++            cell.translationY = if (i == 2) -dp(40f) else 0f
+         }
+     }
+ 
+diff --git a/ios/RNNBottomTabsCustomRow.mm b/ios/RNNBottomTabsCustomRow.mm
+--- a/ios/RNNBottomTabsCustomRow.mm
++++ b/ios/RNNBottomTabsCustomRow.mm
+@@ -195,8 +195,8 @@
+ }
+ 
+ - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+-    if (self.cells.count > 1 && point.y < CGRectGetMinY(self.backgroundColorView.frame)) {
+-        RNNBottomTabsCustomRowCell *cell = self.cells[1];
++    if (self.cells.count > 2 && point.y < CGRectGetMinY(self.backgroundColorView.frame)) {
++        RNNBottomTabsCustomRowCell *cell = self.cells[2];
+         CGPoint localPoint = [self convertPoint:point toView:cell];
+         CGFloat dx = localPoint.x - CGRectGetMidX(cell.bounds);
+         CGFloat dy = localPoint.y - CGRectGetMidY(cell.bounds);
+@@ -257,8 +257,8 @@
+     for (NSUInteger i = 0; i < self.cells.count; i++) {
+         CGFloat x = floor((CGFloat)i * width);
+         CGFloat nextX = floor((CGFloat)(i + 1) * width);
+-        self.cells[i].frame = CGRectMake(x, 0, nextX - x, totalHeight + (i == 1 ? 30.0 : 0.0));
+-        self.cells[i].transform = i == 1 ? CGAffineTransformMakeTranslation(0, -40.0) : CGAffineTransformIdentity;
++        self.cells[i].frame = CGRectMake(x, 0, nextX - x, totalHeight + (i == 2 ? 30.0 : 0.0));
++        self.cells[i].transform = i == 2 ? CGAffineTransformMakeTranslation(0, -40.0) : CGAffineTransformIdentity;
+     }
+ }
+ 

@@ -2,8 +2,10 @@
  * @format
  */
 
-import { AppRegistry } from 'react-native';
-import App from './App';
-import { name as appName } from './app.json';
+import notifee from 'react-native-notify-kit';
+import { handleNotificationEvent } from './src/services/notificationService';
+import './src/navigation';
 
-AppRegistry.registerComponent(appName, () => App);
+notifee.onBackgroundEvent(async ({ type, detail }) => {
+  await handleNotificationEvent(type, detail);
+});

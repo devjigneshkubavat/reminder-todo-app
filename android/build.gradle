@@ -1,11 +1,13 @@
 buildscript {
     ext {
+        RNNKotlinVersion = "2.0.21"
         buildToolsVersion = "37.0.0"
         minSdkVersion = 24
         compileSdkVersion = 37
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
         kotlinVersion = "2.2.0"
+        REACT_NATIVE_NODE_MODULES_DIR = "$rootDir/../node_modules/react-native"
     }
     repositories {
         google()
@@ -15,6 +17,22 @@ buildscript {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+allprojects {
+    ext {
+        REACT_NATIVE_NODE_MODULES_DIR = "$rootDir/../node_modules/react-native"
+    }
+}
+
+subprojects { subproject ->
+    afterEvaluate {
+        if (subproject.hasProperty("android")) {
+            android {
+                compileSdk = rootProject.ext.compileSdkVersion
+            }
+        }
     }
 }
 
